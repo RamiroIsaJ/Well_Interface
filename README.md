@@ -13,7 +13,7 @@ This program can be used for online analysis where process will be:
 * Obtain the regions corresponding to yeast inside the well and compute the percentage of area.
 
 In the offline process the analysis of images can be performed:
-* Detect the circular region correspónding to the well.
+* Detect the circular region corresponding to the well.
 * Obtain the regions corresponding to yeast inside the well and compute the percentage of area.
 
 ## Results of Well_Interface
