@@ -26,4 +26,4 @@ Results are presented like a binary images and a one graphic with the curve of g
 ------------ | -------------
 
 
-ANSIS will be presented in a **scientific paper** in the next months.
+Well_Interface will be presented in a **scientific paper** in the next months.
