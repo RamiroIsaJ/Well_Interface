@@ -1,13 +1,13 @@
 # Ramiro Isa-Jara, ramiro.isaj@gmail.com
 # Vision Interface to use for viewing and saving images from Video Camera Input
-# with Analysis of area from experiments with well ----- version 0.1.1
+# with Analysis of area from experiments with well using HSV space ----- version 0.2.1
 
 import cv2
 import os
 import time as tm
 import numpy as np
 import pandas as pd
-import Wells_def as wd
+import Well2_def as wd
 import PySimpleGUI as sg
 from datetime import datetime
 import matplotlib.pyplot as plt
@@ -83,11 +83,11 @@ window = sg.Window('WELLS Analysis Interface', layout, font="Helvetica "+str(Scr
 window['_IMA_'].update(data=wd.bytes_(img, m1, n1))
 # ----------------------------------------------------------------------------------
 time, id_image, id_sys, method, i = 0, 1, 0, 0, -1
-x, y, radius, cont, ini_rad = 0, 0, 0, 0, 15
+x, y, radius, cont_ini = 0, 0, 0, 0
 view_, save_, analysis_, finish_, control, analysis_b, save_only = False, False, False, False, False, False, False
 video, name, image, ini_time, type_i, filename = None, None, None, None, None, None
-path_des1, path_des2, path_ori, filenames, data = [], [], [], [], []
-
+path_des1, path_des2, path_ori, filenames, cords_well = [], [], [], [], []
+g_filters = wd.build_filters()
 # Variable to save results
 results = pd.DataFrame(columns=['Image', 'Percentage'])
 # -----------------------------------------------------------------------------------
@@ -100,7 +100,7 @@ while True:
     now_time = now.strftime("%H : %M : %S")
     window['_TAC_'].update(now_time)
 
-    if event is None or event == sg.WIN_CLOSED:
+    if event == sg.WIN_CLOSED:
         break
 
     if event == '_VIN_':
@@ -293,21 +293,24 @@ while True:
                 finish_ = True
                 continue
 
-        if cont <= 5:
-            ima_res, x, y, radius = wd.circular_reg(image_)
-            data.append([x, y, radius])
+        if cont_ini < 6:
+            ima_res, x, y, radius = wd.well_region(image_, g_filters)
+            cords_well.append([x, y, radius])
         else:
-            data = np.array(data)
-            x = int(np.round(np.average(data[:, 0])))
-            y = int(np.round(np.average(data[:, 1])))
-            radius = int(np.round(np.average(data[:, 2])))
-            ima_res = wd.seq_circular(image_, x, y, radius)
-        cont += 1
-
-        mask, control, area, area_y, percent, ini_rad = wd.wells_analysis(image_, i, x, y, radius, control, ini_rad)
+            _, x, y, radius = wd.well_region(image_, g_filters)
+            ctr_range = wd.eval_cords(cords_well, x, y, radius)
+            if ctr_range:
+                cont_ref = 0
+                cords_well.append([x, y, radius])
+            # well detection area in sequence
+            ima_res, x, y, radius = wd.seq_circular(image_, cords_well)
+        cont_ini += 1
+        # main process to detect area
+        mask, ima_f, area, area_y, percent = wd.well_main(image_, ima_res, i, x, y, radius)
         # save image selected
         root_des = os.path.join(path_des2, filename)
-        plt.imsave(root_des, mask, cmap='gray')
+        # plt.imsave(root_des, mask, cmap='gray')
+        plt.imsave(root_des, ima_f)
         # save results
         results = results.append({'Image': filename, 'Percentage': percent}, ignore_index=True)
 
@@ -319,3 +322,4 @@ while True:
 
 print('CLOSE WINDOW')
 window.close()
+
