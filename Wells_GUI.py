@@ -7,7 +7,7 @@ import math
 import time as tm
 import numpy as np
 import pandas as pd
-import Well2_def as wd
+import Wells_def as wd
 import PySimpleGUI as sg
 from datetime import datetime
 
