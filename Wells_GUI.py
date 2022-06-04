@@ -1,16 +1,15 @@
 # Ramiro Isa-Jara, ramiro.isaj@gmail.com
 # Vision Interface to use for viewing and saving images from Video Camera Input
-# with Analysis of area from experiments with well using HSV space ----- version 0.2.1
+# with Analysis of area from experiments with well ----- version 0.2.1
 
 import cv2
-import os
+import math
 import time as tm
 import numpy as np
 import pandas as pd
-import Wells_def as wd
+import Well2_def as wd
 import PySimpleGUI as sg
 from datetime import datetime
-import matplotlib.pyplot as plt
 
 
 # -------------------------------
@@ -38,10 +37,11 @@ layout3 = [[sg.Radio('Minutes', "RADIO2", default=True, key='_TMI_'), sg.Radio('
 layout3a = [[sg.Radio('On-line', "RADIO3", default=True, key='_MET_')],
             [sg.Radio('Off-line', "RADIO3")], [sg.Text('')]]
 
-layout4 = [[sg.Text('Source IMAGES: ', size=(15, 1)), sg.InputText(size=(32, 1), key='_SIM_'), sg.FolderBrowse()],
-           [sg.Text('Name images: ', size=(15, 1)), sg.InputText('Experiment1_', size=(32, 1), key='_NGR_')],
-           [sg.Text('Destiny SAVE: ', size=(15, 1)), sg.InputText(size=(32, 1), key='_DGR_'), sg.FolderBrowse()],
-           [sg.Text('Destiny RESULTS: ', size=(15, 1)), sg.InputText(size=(32, 1), key='_DBN_'), sg.FolderBrowse()],
+layout4 = [[sg.Text('Radius Well: ', size=(10, 1)), sg.InputText('700', size=(6, 1), key='_RAW_'),
+            sg.Text('um.', size=(8, 1)),
+            sg.Text('Name images: ', size=(12, 1)), sg.InputText('Experiment1_', size=(15, 1), key='_NGR_')],
+           [sg.Text('Save/Read Images: ', size=(15, 1)), sg.InputText(size=(32, 1), key='_SIM_'), sg.FolderBrowse()],
+           [sg.Text('Save Results: ', size=(15, 1)), sg.InputText(size=(32, 1), key='_DBN_'), sg.FolderBrowse()],
            ]
 
 layout6 = [[sg.T("", size=(25, 1)), sg.Text('NO PROCESS', size=(33, 1), key='_MES_', text_color='DarkRed')]]
@@ -57,10 +57,9 @@ layout7 = [[sg.T("", size=(20, 1)), sg.Text('Current time: ', size=(10, 1)), sg.
            [sg.Text('Total save images: ', size=(17, 1)), sg.InputText('', key='_CIM_', size=(7, 1)),
             sg.T("", size=(4, 1)),
             sg.Text('Total image set: ', size=(14, 1)), sg.InputText('', key='_CTI_', size=(8, 1)), sg.T("", size=(1, 1))],
-           [sg.Text('Area well: ', size=(17, 1)), sg.InputText('', key='_AWL_', size=(7, 1)),
+           [sg.Text('Area well: ', size=(14, 1)), sg.InputText('', key='_AWL_', size=(10, 1)), sg.Text('um.', size=(4, 1)),
             sg.T("", size=(4, 1))],
-           [sg.Text('Area yeast: ', size=(17, 1)), sg.InputText('', key='_AYE_', size=(7, 1)),
-            sg.T("", size=(4, 1)),
+           [sg.Text('Area yeast: ', size=(14, 1)), sg.InputText('', key='_AYE_', size=(10, 1)), sg.Text('um.', size=(4, 1)),
             sg.Text('% Area yeast: ', size=(14, 1)), sg.InputText('', key='_PYE_', size=(8, 1)), sg.T("", size=(1, 1))],
            ]
 
@@ -70,8 +69,8 @@ v_image = [sg.Image(filename='', key="_IMA_")]
 col_1 = [[sg.Frame('', [v_image])]]
 col_2 = [[sg.Frame('Operative S.: ', layout1, title_color='Blue'),
           sg.Frame('Type image: ', layout2, title_color='Blue'), sg.Frame('Method: ', layout3a, title_color='Blue'),
-          sg.Frame('Settings: ', layout3, title_color='Blue'),],
-         [sg.Frame('Directories: ', layout4, title_color='Blue')],
+          sg.Frame('Settings: ', layout3, title_color='Blue')],
+         [sg.Frame('Settings and directories: ', layout4, title_color='Blue')],
          [sg.T(" ", size=(8, 1)), sg.Button('View', size=(8, 1)), sg.Button('Save', size=(8, 1)),
           sg.Button('Analysis', size=(8, 1)), sg.Button('Finish', size=(8, 1))],
          [sg.Frame('', layout6)], [sg.Frame('', layout7)]]
@@ -83,13 +82,14 @@ window = sg.Window('WELLS Analysis Interface', layout, font="Helvetica "+str(Scr
 window['_IMA_'].update(data=wd.bytes_(img, m1, n1))
 # ----------------------------------------------------------------------------------
 time, id_image, id_sys, method, i = 0, 1, 0, 0, -1
-x, y, radius, cont_ini = 0, 0, 0, 0
+x, y, radius, cont_ini, area_total = 0, 0, 0, 0, 0
 view_, save_, analysis_, finish_, control, analysis_b, save_only = False, False, False, False, False, False, False
 video, name, image, ini_time, type_i, filename = None, None, None, None, None, None
-path_des1, path_des2, path_ori, filenames, cords_well = [], [], [], [], []
-g_filters = wd.build_filters()
+path_des1, path_des2, filenames, cords_well = [], [], [], []
+segYes = wd.SegmentYeast()
+segYes.build_filters()
 # Variable to save results
-results = pd.DataFrame(columns=['Image', 'Percentage'])
+results = pd.DataFrame(columns=['Image', 'Percentage', 'Area'])
 # -----------------------------------------------------------------------------------
 
 # Event Loop to process "events" and get the "values" of the inputs
@@ -176,10 +176,10 @@ while True:
         window['_MES_'].update('ONLY SAVE IMAGES')
         print('SAVE IMAGES')
         if id_sys == 0:
-            path_des1 = wd.update_dir(values['_DGR_']) + "\\"
+            path_des1 = wd.update_dir(values['_SIM_']) + "\\"
             path_des1 = r'{}'.format(path_des1)
         else:
-            path_des1 = values['_DGR_'] + '/'
+            path_des1 = values['_SIM_'] + '/'
         # ------------------------------------------------------------------
         if len(path_des1) > 1 and len(name) > 1 and save_ is False:
             ini_time = datetime.now()
@@ -195,6 +195,8 @@ while True:
         window['_TIN_'].update(now_time1)
         window['_TFI_'].update('-- : -- : --')
         id_image = int(values['_IDI_'])
+        radius = float(values['_RAW_'])
+        area_total = np.round(math.pi * radius**2, 2)
         # -------------------------------------------------------------------
         method = 0 if values['_MET_'] else 1
         id_sys = 0 if values['_SYS_'] else 1
@@ -216,7 +218,7 @@ while True:
                 window['_ITM_'].update('sec')
             # -------------------------------------------------------------------
             if id_sys == 0:
-                path_des1 = wd.update_dir(values['_DGR_']) + "\\"
+                path_des1 = wd.update_dir(values['_SIM_']) + "\\"
                 path_des1 = r'{}'.format(path_des1)
                 path_des2 = wd.update_dir(values['_DBN_']) + "\\"
                 path_des2 = r'{}'.format(path_des2)
@@ -237,19 +239,19 @@ while True:
             window['_MES_'].update('OFFLINE PROCESSING')
             print('ONLY Image PROCESSING')
             if id_sys == 0:
-                path_ori = wd.update_dir(values['_SIM_']) + "\\"
-                path_ori = r'{}'.format(path_ori)
+                path_des1 = wd.update_dir(values['_SIM_']) + "\\"
+                path_des1 = r'{}'.format(path_des1)
                 path_des2 = wd.update_dir(values['_DBN_']) + "\\"
                 path_des2 = r'{}'.format(path_des2)
             else:
-                path_ori = values['_SIM_'] + '/'
+                path_des1 = values['_SIM_'] + '/'
                 path_des2 = values['_DBN_'] + '/'
             # ------------------------------------------------------------------
-            if len(path_des2) > 1 and len(path_ori) > 1 and analysis_ is False:
+            if len(path_des2) > 1 and len(path_des1) > 1 and analysis_ is False:
                 ini_time = datetime.now()
                 time = float(values['_INF_'])
                 analysis_ = True
-            elif len(path_des2) > 1 and len(path_ori) > 1 and analysis_:
+            elif len(path_des2) > 1 and len(path_des1) > 1 and analysis_:
                 sg.Popup('Warning', ['Process is running'])
             else:
                 sg.Popup('Error', ['Information not valid'])
@@ -284,7 +286,7 @@ while True:
             id_image += 1
             analysis_ = False
         else:
-            filenames, image_, filename, total_i = wd.load_image_i(path_ori, i, type_i, filenames, id_sys)
+            filenames, image_, filename, total_i = wd.load_image_i(path_des1, i, type_i, filenames, id_sys)
             window['_CTI_'].update(total_i)
             if len(image_) == 0 and i > 0:
                 finish_ = True
@@ -293,33 +295,24 @@ while True:
                 finish_ = True
                 continue
 
-        if cont_ini < 6:
-            ima_res, x, y, radius = wd.well_region(image_, g_filters)
-            cords_well.append([x, y, radius])
-        else:
-            _, x, y, radius = wd.well_region(image_, g_filters)
-            ctr_range = wd.eval_cords(cords_well, x, y, radius)
-            if ctr_range:
-                cont_ref = 0
-                cords_well.append([x, y, radius])
-            # well detection area in sequence
-            ima_res, x, y, radius = wd.seq_circular(image_, cords_well)
-        cont_ini += 1
+        cont_ini, cords_well, ima_res, x, y, radius = segYes.ini_well(image_, cont_ini, cords_well)
         # main process to detect area
-        mask, ima_f, area, area_y, percent = wd.well_main(image_, ima_res, i, x, y, radius)
-        # save image selected
-        root_des = os.path.join(path_des2, filename)
-        # plt.imsave(root_des, mask, cmap='gray')
-        plt.imsave(root_des, ima_f)
+        percent, img_f = segYes.well_main(path_des2, ima_res, filename, type_i, i, x, y, radius)
+        area_yeast = np.round((area_total * percent) / 100, 2)
         # save results
-        results = results.append({'Image': filename, 'Percentage': percent}, ignore_index=True)
-
-        window['_IMA_'].update(data=wd.bytes_(ima_res, m1, n1))
-        window['_AWL_'].update(area)
-        window['_AYE_'].update(area_y)
+        results = results.append({'Image': filename, 'Percentage': percent, 'Area': area_yeast}, ignore_index=True)
+        print('Processing image  ----->  ' + str(i))
+        table = [['Total area      : ', str(area_total)],
+                 ['Detected area   : ', str(area_yeast)],
+                 ['Percentage      : ', str(percent)]]
+        for line in table:
+            print('{:>10} {:>10}'.format(*line))
+        print('-------------------------------------------------------------------------')
+        window['_IMA_'].update(data=wd.bytes_(img_f, m1, n1))
+        window['_AWL_'].update(area_total)
+        window['_AYE_'].update(area_yeast)
         window['_PYE_'].update(percent)
 
 
 print('CLOSE WINDOW')
 window.close()
-
