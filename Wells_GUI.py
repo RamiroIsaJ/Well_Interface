@@ -85,7 +85,7 @@ time, id_image, id_sys, method, i = 0, 1, 0, 0, -1
 x, y, radius, cont_ini, area_total = 0, 0, 0, 0, 0
 view_, save_, analysis_, finish_, control, analysis_b, save_only = False, False, False, False, False, False, False
 video, name, image, ini_time, type_i, filename = None, None, None, None, None, None
-path_des1, path_des2, filenames, cords_well = [], [], [], []
+path_des1, path_des2, filenames, cords_well, name_i = [], [], [], [], []
 segYes = wd.SegmentYeast()
 segYes.build_filters()
 # Variable to save results
@@ -257,7 +257,8 @@ while True:
                 sg.Popup('Error', ['Information not valid'])
 
     if save_:
-        filename = path_des1 + name + str(id_image) + type_i
+        name_i = name + str(id_image) + type_i
+        filename = path_des1 + name_i
         # -----------------------------------------------------------------
         now_time_ = datetime.now()
         delta = now_time_ - ini_time
@@ -297,7 +298,7 @@ while True:
 
         cont_ini, cords_well, ima_res, x, y, radius = segYes.ini_well(image_, cont_ini, cords_well)
         # main process to detect area
-        percent, img_f = segYes.well_main(path_des2, ima_res, filename, type_i, i, x, y, radius)
+        percent, img_f = segYes.well_main(path_des2, ima_res, name_i, i, x, y, radius)
         area_yeast = np.round((area_total * percent) / 100, 2)
         # save results
         results = results.append({'Image': filename, 'Percentage': percent, 'Area': area_yeast}, ignore_index=True)
