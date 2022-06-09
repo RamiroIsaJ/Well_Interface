@@ -261,10 +261,10 @@ class SegmentYeast:
         percent_well_ = np.round((area_detected_ * 100) / area_well_, 2)
         return seg_image, percent_well_
 
-    def well_main(self, des, img_r, ima_name, type_i, i, x_, y_, radius_):
+    def well_main(self, des, img_r, ima_name, i, x_, y_, radius_):
         img_final, percent_well = self.well_analysis(img_r, x_, y_, radius_)
         # Output image
-        root_des = des + ima_name.split('.')[0] + type_i
+        root_des = des + ima_name
         cv2.imwrite(root_des, img_final)
         return percent_well, img_final
 
