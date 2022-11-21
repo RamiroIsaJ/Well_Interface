@@ -54,11 +54,23 @@ class SegmentYeast:
             if area > area_min:
                 self.f_contours.append(c)
 
-    def binary_contours(self, img_s, binary_):
+    def binary_contours(self, img_s, binary_, x_, y_, radius_):
         img_c = np.copy(img_s)
         contours, hierarchy = cv2.findContours(binary_, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(img_c, contours, -1, (0, 0, 255), 2)
-        return img_c
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+        contours_f = []
+        for c in contours:
+            M = cv2.moments(c)
+            if M["m00"] > 0:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+                dist_rel = self.dist(np.array([cx, cy]), np.array([x_, y_])) / radius_
+                if dist_rel < 0.50:
+                    contours_f.append(c)
+            else:
+                contours_f.append(c)
+        cv2.drawContours(img_c, contours_f, -1, (0, 0, 255), 2)
+        return img_c, len(contours_f)
 
     def p_circle(self, binary_):
         cords = []
@@ -153,12 +165,16 @@ class SegmentYeast:
         thresh_sobel_ = np.array((255 * (combined > thresh_val_))).astype(np.uint8)
         return thresh_sobel_, thresh_val_, thresh_norm_
 
-    def hsv_space(self):
+    def hsv_space(self, param_):
         hsv = rgb2hsv(self.img_)
         image = (255 * hsv[:, :, 1]).astype(np.uint8)
         th_hsv_ = threshold_otsu(image)
-        thresh_hsv = (255 * np.array(image > 30)).astype(np.uint8)
-        return thresh_hsv, th_hsv_
+        if param_ < 75:
+            th_value = 90 if th_hsv_ < 100 else 100
+        else:
+            th_value = 50 if th_hsv_ < 100 else 60
+        thresh_hsv = (255 * np.array(image > th_value)).astype(np.uint8)
+        return thresh_hsv, th_value
 
     def roi_region(self, bin_img, x_, y_, radius_, val_):
         roi_img = np.zeros_like(bin_img, dtype=np.uint8)
@@ -212,8 +228,8 @@ class SegmentYeast:
         kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
         binary = cv2.morphologyEx(binary, cv2.MORPH_ERODE, kernel, iterations=1)
         arr = binary > 0
-        binary = morphology.remove_small_objects(arr, min_size=100, connectivity=1)
-        binary = morphology.remove_small_holes(binary.astype(np.bool), area_threshold=50000, connectivity=1)
+        binary = morphology.remove_small_objects(arr, min_size=1000, connectivity=1)
+        binary = morphology.remove_small_holes(binary.astype(np.bool_), area_threshold=50000, connectivity=1)
         binary = (255 * binary).astype(np.uint8)
         binary = self.gray_circle(binary, x_, y_)
         return binary
@@ -225,10 +241,10 @@ class SegmentYeast:
         self.img_ = (255 * norm_img).astype(np.uint8)
         # ---> obtain binary regions of images
         bin_sobel, th_sobel, th_norm = self.sobel_filter()
-        bin_hsv, th_hsv = self.hsv_space()
         bin_gray = cv2.threshold(original_gray, thresh_gray, 255, cv2.THRESH_TOZERO_INV)[1]
         # ---> choose better binary image
         param = np.round(thresh_gray * th_norm)
+        bin_hsv, th_hsv = self.hsv_space(param)
         if (param >= 70 and th_sobel <= 145) or (param >= 79 and th_sobel >= 150 and th_hsv > 133) or \
                 (param >= 80 and th_sobel >= 150):
             rel_ = np.round(min(th_hsv, th_sobel) / max(th_hsv, th_sobel), 2)
@@ -244,29 +260,76 @@ class SegmentYeast:
             ima_binary = self.opera_gray(bin_gray, x_, y_, radius_)
         return ima_binary
 
-    def well_analysis(self, img_s, x_, y_, radius_):
-        binary = self.binary_regions(x_, y_, radius_)
+    def well_analysis(self, img_s, x_, y_, radius_, ctr_b, bin_alt):
+        if ctr_b == 0:
+            binary = self.binary_regions(x_, y_, radius_)
+        else:
+            binary = np.copy(bin_alt)
+        # analysis values
         idx = np.where(binary == 255)
-        seg_image = self.binary_contours(img_s, binary)
-        # image binary result
-        binary2 = np.zeros_like(binary, dtype=np.uint8)
-        cv2.circle(binary2, (x_, y_), radius_ + 1, 255, 1)
-        binary2[idx] = binary[idx]
+        seg_image, total_cont = self.binary_contours(img_s, binary, x_, y_, radius_)
         # compute segmented area
         area_detected_ = np.sum(binary == 255)
         # compute well area
         well = np.zeros_like(binary, dtype=np.uint8)
         cv2.circle(well, (x_, y_), radius_, 255, -1)
         area_well_ = np.sum(well == 255)
-        percent_well_ = np.round((area_detected_ * 100) / area_well_, 2)
-        return seg_image, percent_well_
+        # control zero area
+        if total_cont == 0:
+            percent_well_ = 0.0
+        else:
+            percent_well_ = np.round((area_detected_ * 100) / area_well_, 2)
+        return binary, seg_image, percent_well_
 
-    def well_main(self, des, img_r, ima_name, i, x_, y_, radius_):
-        img_final, percent_well = self.well_analysis(img_r, x_, y_, radius_)
+    def binary_seq(self, binary_):
+        kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        bina_ = cv2.morphologyEx(binary_, cv2.MORPH_CLOSE, kernel, iterations=1)
+        arr = bina_ > 0
+        bina_ = morphology.remove_small_objects(arr, min_size=100, connectivity=1)
+        bina_ = morphology.remove_small_holes(bina_.astype(np.bool_), area_threshold=50000, connectivity=1)
+        return (255 * bina_).astype(np.uint8)
+
+    def well_main(self, des, img_r, ima_name, i, ctr_exp, bin_ref, prt_ref, cont_zero, x_, y_, radius_):
+        binary_, img_final, prt_well = self.well_analysis(img_r, x_, y_, radius_, 0, 0)
+        print('----->' + str(prt_well))
+        if i == 0 and cont_zero == 0:
+            bin_ref, prt_ref = np.copy(binary_), np.copy(prt_well)
+        else:
+            if cont_zero > 2 and prt_well > 0.0:
+                bin_ref, prt_ref = np.copy(binary_), np.copy(prt_well)
+                cont_zero = 0
+
+        if ctr_exp == 0:
+            if prt_well > 0:
+                if prt_ref > prt_well or np.round(prt_ref / prt_well, 2) > 0.97:
+                    bina_ = cv2.bitwise_or(bin_ref, binary_)
+                    bina_ = self.binary_seq(bina_)
+                    binary_, img_final, prt_well = self.well_analysis(img_r, x_, y_, radius_, 1, bina_)
+                    bin_ref, prt_ref = np.copy(binary_), np.copy(prt_well)
+                    cont_zero = 0
+            else:
+                cont_zero += 1
+        else:
+            if prt_well > 0:
+                if prt_well < prt_ref and np.round(prt_well / prt_ref, 2) > 0.95:
+                    bina_ = cv2.bitwise_and(bin_ref, binary_)
+                    bina_ = self.binary_seq(bina_)
+                    binary_, img_final, prt_well = self.well_analysis(img_r, x_, y_, radius_, 1, bina_)
+                    bin_ref, prt_ref = np.copy(binary_), np.copy(prt_well)
+                elif prt_well < prt_ref and np.round(prt_well / prt_ref, 2) < 0.95:
+                    bina_ = cv2.bitwise_or(bin_ref, binary_)
+                    bina_ = self.binary_seq(bina_)
+                    binary_, img_final, prt_well = self.well_analysis(img_r, x_, y_, radius_, 1, bina_)
+                    bin_ref, prt_ref = np.copy(binary_), np.copy(prt_well)
+                cont_zero = 0
+            else:
+                cont_zero += 1
+
         # Output image
+        print(des, ima_name)
         root_des = des + ima_name
         cv2.imwrite(root_des, img_final)
-        return percent_well, img_final
+        return prt_well, img_final, bin_ref, prt_ref, cont_zero
 
     def ini_well(self, img, cont_ini, cords_well):
         self.img = img
