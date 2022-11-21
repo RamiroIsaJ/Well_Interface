@@ -81,8 +81,8 @@ layout = [[sg.Column(col_1), sg.Column(col_2)]]
 window = sg.Window('WELLS Analysis Interface', layout, font="Helvetica "+str(Screen_size), finalize=True)
 window['_IMA_'].update(data=wd.bytes_(img, m1, n1))
 # ----------------------------------------------------------------------------------
-time, id_image, id_sys, method, i = 0, 1, 0, 0, -1
-x, y, radius, cont_ini, area_total = 0, 0, 0, 0, 0
+time, id_image, id_sys, method, i, cont_z = 0, 1, 0, 0, -1, 0
+x, y, radius, cont_ini, area_total, ctr_exp, binary_ref, percent_ref = 0, 0, 0, 0, 0, 0, 0, 0
 view_, save_, analysis_, finish_, control, analysis_b, save_only = False, False, False, False, False, False, False
 video, name, image, ini_time, type_i, filename = None, None, None, None, None, None
 path_des1, path_des2, filenames, cords_well, name_i = [], [], [], [], []
@@ -287,7 +287,7 @@ while True:
             id_image += 1
             analysis_ = False
         else:
-            filenames, image_, filename, total_i = wd.load_image_i(path_des1, i, type_i, filenames, id_sys)
+            filenames, image_, name_i, total_i = wd.load_image_i(path_des1, i, type_i, filenames, id_sys)
             window['_CTI_'].update(total_i)
             if len(image_) == 0 and i > 0:
                 finish_ = True
@@ -298,10 +298,16 @@ while True:
 
         cont_ini, cords_well, ima_res, x, y, radius = segYes.ini_well(image_, cont_ini, cords_well)
         # main process to detect area
-        percent, img_f = segYes.well_main(path_des2, ima_res, name_i, i, x, y, radius)
+        percent, img_f, binary_ref, percent_ref, cont_z = segYes.well_main(path_des2, ima_res, name_i, i, ctr_exp,
+                                                                           binary_ref, percent_ref, cont_z, x, y, radius)
         area_yeast = np.round((area_total * percent) / 100, 2)
+        if ctr_exp == 0 and area_yeast > 50:
+            ctr_exp = 1
+        if ctr_exp == 1 and area_yeast < 30:
+            ctr_exp = 0
+
         # save results
-        results = results.append({'Image': filename, 'Percentage': percent, 'Area': area_yeast}, ignore_index=True)
+        results = results.append({'Image': name_i, 'Percentage': percent, 'Area': area_yeast}, ignore_index=True)
         print('Processing image  ----->  ' + str(i))
         table = [['Total area      : ', str(area_total)],
                  ['Detected area   : ', str(area_yeast)],
